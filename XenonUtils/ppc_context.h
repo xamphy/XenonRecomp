@@ -29,6 +29,14 @@
 #define PPC_EXTERN_FUNC(x) extern PPC_FUNC(x)
 #define PPC_WEAK_FUNC(x) __attribute__((weak,noinline)) PPC_FUNC(x)
 
+// Overridable entry point x whose generated body is impl. ELF/COFF: x is a weak alias of impl.
+// Mach-O (Apple) has no aliases: x is a weak function calling impl (a strong PPC_FUNC(x) elsewhere still wins).
+#ifdef __APPLE__
+#define PPC_WEAK_ALIAS_FUNC(x, impl) PPC_FUNC_IMPL(impl); PPC_WEAK_FUNC(x) { impl(ctx, base); }
+#else
+#define PPC_WEAK_ALIAS_FUNC(x, impl) __attribute__((alias(#impl))) PPC_WEAK_FUNC(x)
+#endif
+
 #define PPC_FUNC_PROLOGUE() __builtin_assume(((size_t)base & 0x1F) == 0)
 
 #ifndef PPC_LOAD_U8

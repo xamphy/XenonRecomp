@@ -2522,7 +2522,7 @@ bool Recompiler::Recompile(const Function& fn)
     }
 
 #ifdef XENON_RECOMP_USE_ALIAS
-    println("__attribute__((alias(\"__imp__{}\"))) PPC_WEAK_FUNC({});", name, name);
+    println("PPC_WEAK_ALIAS_FUNC({}, __imp__{});", name, name); // PES13 patch: Mach-O has no aliases (see ppc_context.h)
 #endif
 
     println("PPC_FUNC_IMPL(__imp__{}) {{", name);
