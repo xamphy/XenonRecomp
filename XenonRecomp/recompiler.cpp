@@ -609,7 +609,11 @@ bool Recompiler::Recompile(
     case PPC_INST_BCTR:
         if (switchTable != config.switchTables.end())
         {
-            println("\tswitch ({}.u64) {{", r(switchTable->second.r));
+            // PES13 patch: switch on the low 32 bits. The guest bounds-checks the index with a
+            // 32-bit compare (cmplwi) and builds the table offset from the low word (rlwinm), so
+            // stale upper bits must not reach the host switch (an out-of-range u64 index made the
+            // compiled jump table read out of bounds -> intermittent crashes).
+            println("\tswitch ({}.u32) {{", r(switchTable->second.r));
 
             for (size_t i = 0; i < switchTable->second.labels.size(); i++)
             {
