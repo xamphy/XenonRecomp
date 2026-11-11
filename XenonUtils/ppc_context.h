@@ -113,6 +113,12 @@
 #define PPC_CALL_FUNC(x) x(ctx, base)
 #endif
 
+// mftb. The console's time base runs at 49.875 MHz and titles may hard-code that rate; a runtime
+// can define this to return a console-rate counter. Default: the raw host counter.
+#ifndef PPC_QUERY_TIMEBASE
+#define PPC_QUERY_TIMEBASE() __rdtsc()
+#endif
+
 #define PPC_MEMORY_SIZE 0x100000000ull
 
 #define PPC_LOOKUP_FUNC(x, y) *(PPCFunc**)(x + PPC_IMAGE_BASE + PPC_IMAGE_SIZE + (uint64_t(uint32_t(y) - PPC_CODE_BASE) * 2))
