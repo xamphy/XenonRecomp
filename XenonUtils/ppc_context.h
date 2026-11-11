@@ -693,6 +693,19 @@ inline simde__m128i simde_mm_vctsxs(simde__m128 src1)
     return simde_mm_andnot_si128(simde_mm_castps_si128(xmm2), simde_mm_castps_si128(dest));
 }
 
+// vctuxs / vcfpuxws128: float -> u32, truncating, saturating (NaN and negatives -> 0,
+// >= 2^32 -> 0xFFFFFFFF).
+inline simde__m128i simde_mm_vctuxs(simde__m128 src1)
+{
+    simde__m128 x = simde_mm_max_ps(src1, simde_mm_setzero_ps());   // maxps returns the 2nd operand for NaN
+    simde__m128 two31 = simde_mm_set1_ps(2147483648.0f);
+    simde__m128i big = simde_mm_castps_si128(simde_mm_cmpge_ps(x, simde_mm_set1_ps(4294967296.0f)));
+    simde__m128 hi = simde_mm_cmpge_ps(x, two31);
+    simde__m128i r = simde_mm_cvttps_epi32(simde_mm_sub_ps(x, simde_mm_and_ps(hi, two31)));
+    r = simde_mm_xor_si128(r, simde_mm_and_si128(simde_mm_castps_si128(hi), simde_mm_set1_epi32(INT_MIN)));
+    return simde_mm_or_si128(r, big);
+}
+
 inline simde__m128i simde_mm_vsr(simde__m128i a, simde__m128i b)
 {
     b = simde_mm_srli_epi64(simde_mm_slli_epi64(b, 61), 61);
