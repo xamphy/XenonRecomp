@@ -693,6 +693,48 @@ inline simde__m128i simde_mm_vctsxs(simde__m128 src1)
     return simde_mm_andnot_si128(simde_mm_castps_si128(xmm2), simde_mm_castps_si128(dest));
 }
 
+// float -> half as vpkd3d128 FLOAT16 packs it: NaN or |x| > 65504 -> 0x7FFF (sign kept),
+// denormals shifted in, no rounding (same as the FLOAT16_4 code in the recompiler).
+inline uint16_t ppc_pack_half(float f)
+{
+    uint32_t u;
+    std::memcpy(&u, &f, 4);
+    const uint32_t sign = (u & 0x80000000u) >> 16;
+    const uint32_t a = u & 0x7FFFFFFFu;
+    float af;
+    std::memcpy(&af, &a, 4);
+    if (af != af || af > 65504.0f)
+        return uint16_t(0x7FFF | sign);
+    const uint32_t exp = (u & 0x7F800000u) >> 23;
+    const uint32_t mant = (u & 0x7FE000u) >> 13;
+    uint32_t h;
+    if (exp > 0x70) h = ((exp - 0x70) << 10) + mant;
+    else h = (0x71 - exp > 31) ? 0 : ((0x400 + mant) >> (0x71 - exp));
+    return uint16_t(h | sign);
+}
+
+// IEEE half -> float (vupkd3d128 FLOAT16 unpack).
+inline float ppc_unpack_half(uint16_t h)
+{
+    const uint32_t sign = uint32_t(h & 0x8000) << 16;
+    uint32_t exp = (h >> 10) & 0x1F, mant = h & 0x3FF, u;
+    if (exp == 0)
+    {
+        if (mant == 0) u = sign;
+        else
+        {
+            exp = 127 - 15 + 1;
+            while (!(mant & 0x400)) { mant <<= 1; --exp; }
+            u = sign | (exp << 23) | ((mant & 0x3FF) << 13);
+        }
+    }
+    else if (exp == 31) u = sign | 0x7F800000 | (mant << 13);
+    else u = sign | ((exp + 127 - 15) << 23) | (mant << 13);
+    float f;
+    std::memcpy(&f, &u, 4);
+    return f;
+}
+
 // vctuxs / vcfpuxws128: float -> u32, truncating, saturating (NaN and negatives -> 0,
 // >= 2^32 -> 0xFFFFFFFF).
 inline simde__m128i simde_mm_vctuxs(simde__m128 src1)

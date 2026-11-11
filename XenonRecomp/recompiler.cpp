@@ -732,7 +732,12 @@ bool Recompiler::Recompile(
         break;
 
     case PPC_INST_BLRL:
-        println("__builtin_debugtrap();");
+        // Call through LR (e.g. CRT "mtlr r3; blrl" thunks): target = old LR, LR = return address.
+        println("\t{}.u64 = ctx.lr;", temp());
+        if (!config.skipLr)
+            println("\tctx.lr = 0x{:X};", base + 4);
+        println("\tPPC_CALL_INDIRECT_FUNC({}.u32);", temp());
+        csrState = CSRState::Unknown; // the call could change it
         break;
 
     case PPC_INST_BLT:
@@ -2201,6 +2206,17 @@ bool Recompiler::Recompile(
             println("\t{}.u32[{}] = {}.u32;", v(insn.operands[0]), insn.operands[4], temp());
             break;
 
+        case 3: // float16_2: x in the high half, y in the low half of one word
+            // pack 1 (VPACK_32): the word goes to storage word [shift] (shift 3 = element x,
+            // as for D3D color). pack 2 (VPACK_64): the low 64 bits (word, 0) go to [shift..shift+1].
+            println("\t{}.u32 = (uint32_t(ppc_pack_half({}.f32[3])) << 16) | ppc_pack_half({}.f32[2]);", temp(), v(insn.operands[1]), v(insn.operands[1]));
+            println("\t{}.u32[{}] = {}.u32;", v(insn.operands[0]), insn.operands[4], temp());
+            if (insn.operands[3] == 2 && insn.operands[4] < 3)
+                println("\t{}.u32[{}] = 0;", v(insn.operands[0]), insn.operands[4] + 1);
+            else if (insn.operands[3] != 1 && insn.operands[3] != 2)
+                fmt::println("Unexpected float16_2 pack instruction at {:X}", base);
+            break;
+
         case 5: // float16_4
             if (insn.operands[3] != 2 || insn.operands[4] > 2)
                 fmt::println("Unexpected float16_4 pack instruction at {:X}", base);
@@ -2437,6 +2453,20 @@ bool Recompiler::Recompile(
             }
             println("\t{}.f32[1] = 0.0f;", vTemp());
             println("\t{}.f32[0] = 1.0f;", vTemp());
+            println("\t{} = {};", v(insn.operands[0]), vTemp());
+            break;
+
+        case 3: // float16_2 (same layout as 2 shorts: x = high half of the last word)
+            println("\t{}.f32[3] = ppc_unpack_half({}.u16[1]);", vTemp(), v(insn.operands[1]));
+            println("\t{}.f32[2] = ppc_unpack_half({}.u16[0]);", vTemp(), v(insn.operands[1]));
+            println("\t{}.f32[1] = 0.0f;", vTemp());
+            println("\t{}.f32[0] = 1.0f;", vTemp());
+            println("\t{} = {};", v(insn.operands[0]), vTemp());
+            break;
+
+        case 5: // float16_4 (the last two words: x = highest half)
+            for (size_t i = 0; i < 4; i++)
+                println("\t{}.f32[{}] = ppc_unpack_half({}.u16[{}]);", vTemp(), i, v(insn.operands[1]), i);
             println("\t{} = {};", v(insn.operands[0]), vTemp());
             break;
 
