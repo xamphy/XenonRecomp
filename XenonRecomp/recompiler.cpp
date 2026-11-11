@@ -174,6 +174,12 @@ void Recompiler::Analyse()
         image.symbols.emplace(fmt::format("sub_{:X}", address), address, size, Symbol_Function);
     }
 
+    // Functions with an exception handler (ExceptionFlag) have 8 bytes of handler data in front
+    // of them (handler address + handler data, e.g. __C_specific_handler + scope table).
+    // The linear scan below must skip it: decoded as code it becomes a bogus function that
+    // runs into the real one and truncates it, splitting off its switch cases.
+    std::set<size_t> exceptionHandlerData;
+
     auto& pdata = *image.Find(".pdata");
     size_t count = pdata.size / sizeof(IMAGE_CE_RUNTIME_FUNCTION);
     auto* pf = (IMAGE_CE_RUNTIME_FUNCTION*)pdata.data;
@@ -182,6 +188,9 @@ void Recompiler::Analyse()
         auto fn = pf[i];
         fn.BeginAddress = ByteSwap(fn.BeginAddress);
         fn.Data = ByteSwap(fn.Data);
+
+        if (fn.ExceptionFlag && fn.BeginAddress >= 8)
+            exceptionHandlerData.insert(fn.BeginAddress - 8);
 
         if (image.symbols.find(fn.BeginAddress) == image.symbols.end())
         {
@@ -229,6 +238,13 @@ void Recompiler::Analyse()
             {
                 base += invalidInstr->second;
                 data += invalidInstr->second;
+                continue;
+            }
+
+            if (exceptionHandlerData.count(base) && image.symbols.find(base) == image.symbols.end())
+            {
+                base += 8;
+                data += 8;
                 continue;
             }
 
